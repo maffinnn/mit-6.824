@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -34,6 +35,7 @@ func (m *Master) server() {
 	if e != nil {
 		log.Fatal("listen error:", e)
 	}
+	fmt.Println("master is listening...")
 	go http.Serve(l, nil)
 }
 
@@ -59,17 +61,18 @@ func MakeMaster(files []string, nReduce int) *Master {
 	m := Master{}
 
 	// Your code here.
+	fmt.Println("initating master...")
 	m.nMap = len(files)
 	m.nReduce = nReduce
-	m.mapTasks = make([]Task, 0, m.nMap)
-	m.reduceTasks = make([]Task, 0, m.nReduce)
+	m.mapTasks = make([]Task, m.nMap)
+	m.reduceTasks = make([]Task, m.nReduce)
 
 	for i := 0; i < m.nMap; i++ {
-		m.mapTasks[i] = Task{MAP, IDLE, files[i], i, nReduce}
+		m.mapTasks[i] = Task{MAP, IDLE, files[i], i}
 	}
 
 	for i := 0; i < m.nReduce; i++ {
-		m.reduceTasks[i] = Task{REDUCE, IDLE, "", -1, nReduce}
+		m.reduceTasks[i] = Task{REDUCE, IDLE, "", -1}
 	}
 
 	m.server()

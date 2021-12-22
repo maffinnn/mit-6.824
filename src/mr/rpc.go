@@ -17,11 +17,10 @@ import (
 type TaskType int
 type TaskStatus int
 type Task struct {
-	Type    TaskType
-	Status  TaskStatus // state of the task {IDLE, IN_PROGRESS, COMPLETE}
-	File    string
-	TaskId  int
-	nReduce int
+	Type   TaskType
+	Status TaskStatus // state of the task {IDLE, IN_PROGRESS, COMPLETE}
+	File   string
+	TaskId int
 }
 
 // tasktype enum
@@ -39,9 +38,15 @@ const (
 	COMPLETED
 )
 
+type GetInitArgs struct {
+}
+
+type GetInitReply struct {
+	ReduceCount int
+}
+
 // (worker) request the input files
 type GetArgs struct {
-	// id int // id of the worker machine
 }
 
 type GetReply struct {
@@ -58,6 +63,11 @@ type ReportReply struct {
 }
 
 // Add your RPC definitions here.
+func (m *Master) GetInitCount(args *GetInitArgs, reply *GetInitReply) error {
+	(*reply).ReduceCount = m.nReduce
+	return nil
+}
+
 func (m *Master) GetTask(args *GetArgs, reply *GetReply) error {
 	var task *Task
 	if m.nMap > 0 {
@@ -65,11 +75,11 @@ func (m *Master) GetTask(args *GetArgs, reply *GetReply) error {
 	} else if m.nReduce > 0 {
 		task = m.schedule(m.reduceTasks)
 	} else if m.nMap == 0 && m.nReduce == 0 {
-		task = &Task{DONE, COMPLETED, "", -1, -1}
+		task = &Task{DONE, IN_PROGRESS, "", -1}
 	}
 
 	if task == nil {
-		task = &Task{WAIT, IN_PROGRESS, "", -1, -1}
+		task = &Task{WAIT, IN_PROGRESS, "", -1}
 	}
 
 	(*reply).T = *task

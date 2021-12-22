@@ -47,6 +47,15 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	// Your worker implementation here.
+	args := GetInitArgs{}
+	reply := GetInitReply{}
+	ok := call("Master.GetInitCount", &args, &reply)
+	if !ok {
+		log.Fatal("RPC call GetInitCount error")
+		return
+	}
+
+	nReduce := reply.ReduceCount
 	// continually request for task
 	for {
 		args := GetArgs{}
@@ -56,12 +65,18 @@ func Worker(mapf func(string, string) []KeyValue,
 			log.Println("RPC call GetTask error")
 			continue
 		}
+		fmt.Println("worker get task...")
+
+		if reply == (GetReply{}) {
+			fmt.Println("Master exited or net connection error")
+			return
+		}
 
 		t := reply.T
 		switch t.Type {
 		case MAP:
-			doMap(mapf, &t)
-			break
+			doMap(mapf, &t, nReduce)
+			continue
 		case REDUCE:
 			{
 				doReduce(reducef, &t)
@@ -71,14 +86,13 @@ func Worker(mapf func(string, string) []KeyValue,
 				ok := call("mr.PutTask", &args, &reply)
 				if !ok {
 					log.Fatalf("RPC call PutTask error")
-					// TODO:
 					continue
 				}
 				break
 			}
 		case WAIT:
 			time.Sleep(TIMEWAIT * time.Millisecond)
-			break
+			continue
 		case DONE:
 			return
 		default:
@@ -93,10 +107,10 @@ func Worker(mapf func(string, string) []KeyValue,
 // 1. apply map function
 // 2. periodically write to disk
 // 3. inform master where the completed intermediate value
-func doMap(mapf func(string, string) []KeyValue, t *Task) {
+func doMap(mapf func(string, string) []KeyValue, t *Task, nReduce int) {
 
 	// read ininput files
-	intermediate := make([][]KeyValue, t.nReduce)
+	intermediate := make([][]KeyValue, nReduce)
 	file, err := os.Open(t.File)
 	if err != nil {
 		log.Fatalf("cannot open %v", t.File)
@@ -111,12 +125,12 @@ func doMap(mapf func(string, string) []KeyValue, t *Task) {
 	kva := mapf(t.File, string(content))
 
 	for _, kv := range kva {
-		Rindex := ihash(kv.Key) % (*t).nReduce
+		Rindex := ihash(kv.Key) % nReduce
 		intermediate[Rindex] = append(intermediate[Rindex], kv)
 	}
 
 	// flush to local disk
-	for Rindex := 0; Rindex < (*t).nReduce; Rindex++ {
+	for Rindex := 0; Rindex < nReduce; Rindex++ {
 		ofile, _ := ioutil.TempFile("../mr/mr-tmp", "mr-tmp-*")
 		enc := json.NewEncoder(ofile)
 		for _, kv := range intermediate[Rindex] {
@@ -134,7 +148,7 @@ func doMap(mapf func(string, string) []KeyValue, t *Task) {
 
 		(*t).Status = COMPLETED
 		(*t).File = newpath
-		fmt.Printf("Task no %d is done", (*t).TaskId)
+		fmt.Printf("Map task no. %d is done", (*t).TaskId)
 		args := ReportArgs{*t}
 		reply := ReportReply{}
 		ok := call("Master.ReportTask", args, reply)
